@@ -36,6 +36,32 @@
   .facts { list-style: none; padding: 0; margin: 1.5rem 0; }
   .facts li { padding: .5rem 0; border-bottom: 1px dashed var(--line); }
   .facts li::before { content: "✓ "; color: var(--bronze); font-weight: 700; }
+
+  .demo { background: var(--card); border: 1px solid var(--line); border-radius: 14px;
+          padding: 1.4rem; margin-top: 2rem; }
+  .demo h2 { margin: 0 0 .4rem; }
+  .demo .hint { color: var(--muted); font-size: .9rem; margin: 0 0 .8rem; }
+  .demo textarea { width: 100%; min-height: 130px; font-family: ui-monospace, Consolas, monospace;
+                   font-size: .85rem; padding: .7rem; border: 1px solid var(--line);
+                   border-radius: 8px; background: #fff; resize: vertical; color: var(--charcoal); }
+  .demo .row { display: flex; gap: .6rem; margin-top: .7rem; flex-wrap: wrap; }
+  .demo button { background: var(--bronze); color: #fff; border: 0; border-radius: 8px;
+                 padding: .55rem 1rem; font-weight: 700; cursor: pointer; font-size: .9rem; }
+  .demo button.ghost { background: transparent; color: var(--bronze); border: 1px solid var(--bronze); }
+  #out { margin-top: 1rem; }
+  .sum { font-weight: 600; margin-bottom: .6rem; }
+  .clean { color: #4a7c3f; font-weight: 600; }
+  .empty { color: var(--muted); }
+  .finding { padding: .4rem .6rem; border-radius: 8px; margin: .3rem 0; font-size: .9rem;
+             border: 1px solid var(--line); background: #fff; }
+  .finding .tag { display: inline-block; min-width: 72px; text-align: center; font-size: .72rem;
+                  font-weight: 700; padding: .1rem .4rem; border-radius: 999px; margin-right: .4rem; }
+  .finding.dup .tag { background: #f3e3c3; color: #8a6a1f; }
+  .finding.bad .tag { background: #f6d7d2; color: #a33b2e; }
+  .finding.miss .tag { background: #e8e2d8; color: #6b6259; }
+  .finding.warn .tag { background: #f0e0c8; color: #9a6a3b; }
+  .note { margin-top: .8rem; color: var(--muted); font-size: .8rem; }
+
   .cta { background: var(--charcoal); color: var(--cream); border-radius: 14px;
          padding: 1.8rem; text-align: center; margin-top: 2rem; }
   .cta a { color: var(--beige); font-weight: 700; text-decoration: none;
@@ -75,6 +101,17 @@
     <li>Reports delivered as clean PDF, within a day.</li>
   </ul>
 
+  <div class="demo">
+    <h2>Try it live — paste a CSV</h2>
+    <p class="hint">Paste a bank/ledger or order export below. The check runs in your browser: duplicates, missing values, bad dates, non-numeric amounts, and outliers — each flagged to a specific row. Nothing leaves this page.</p>
+    <textarea id="csv" placeholder="date,description,amount&#10;2024-01-01,Opening balance,1000.00&#10;2024-01-02,Sale - Widget,250.50&#10;..."></textarea>
+    <div class="row">
+      <button onclick="run()">Run checks</button>
+      <button class="ghost" onclick="loadSample()">Load sample</button>
+    </div>
+    <div id="out"></div>
+  </div>
+
   <div class="cta">
     Send us a small export — we'll return the same report on your data, free.
     <br><a href="mailto:zovrenstudio@gmail.com">zovrenstudio@gmail.com</a>
@@ -82,5 +119,150 @@
 
   <footer>Zovren Studio · zovrenstudio@gmail.com</footer>
 </div>
+
+<script>
+function parseCSV(text){
+  const rows = []; let cur = '', row = [], inQ = false;
+  for (let i = 0; i < text.length; i++){
+    const c = text[i];
+    if (inQ){
+      if (c === '"'){ if (text[i+1] === '"'){ cur += '"'; i++; } else inQ = false; }
+      else cur += c;
+    } else {
+      if (c === '"') inQ = true;
+      else if (c === ','){ row.push(cur); cur = ''; }
+      else if (c === '\n'){ row.push(cur); rows.push(row); row = []; cur = ''; }
+      else if (c !== '\r'){ cur += c; }
+    }
+  }
+  if (cur !== '' || row.length > 0){ row.push(cur); rows.push(row); }
+  while (rows.length && rows[rows.length-1].length === 1 && rows[rows.length-1][0].trim() === '') rows.pop();
+  return rows;
+}
+
+function norm(s){ return (s || '').toLowerCase().replace(/[^a-z0-9]/g, ''); }
+function isNum(v){ return v !== '' && v != null && !isNaN(Number(v)); }
+
+function detectCols(headers){
+  const c = { id: null, date: null, amount: null, qty: null };
+  headers.forEach((h, i) => {
+    const n = norm(h);
+    if (c.id === null && (n === 'id' || n === 'orderid' || n === 'transactionid' || n === 'ref' ||
+        n === 'reference' || n === 'invoiceno' || n === 'invoicenumber' || n === 'orderno' ||
+        n.endsWith('id') || n.endsWith('number') || n.endsWith('no'))) c.id = i;
+    if (c.date === null && (n.includes('date') || n.includes('tarih'))) c.date = i;
+    if (c.amount === null && (n.includes('amount') || n.includes('debit') || n.includes('credit') ||
+        n.includes('total') || n.includes('value') || n.includes('balance'))) c.amount = i;
+    if (c.qty === null && (n.includes('qty') || n.includes('quantity') || n.includes('units') || n.includes('count'))) c.qty = i;
+  });
+  return c;
+}
+
+function loadSample(){
+  document.getElementById('csv').value =
+    'date,description,amount\n' +
+    '2024-01-01,Opening balance,1000.00\n' +
+    '2024-01-02,Sale - Widget,250.50\n' +
+    '2024-01-02,Sale - Widget,250.50\n' +
+    '2024-01-05,Refund,not-a-number\n' +
+    '2024-02-30,Impossible date,30.00\n' +
+    '2024-01-10,,200.00\n' +
+    '2024-01-12,Bulk order,9999.00\n';
+  run();
+}
+
+function run(){
+  const txt = document.getElementById('csv').value;
+  const out = document.getElementById('out');
+  if (!txt.trim()){ out.innerHTML = '<p class="empty">Paste a CSV above (or click “Load sample”).</p>'; return; }
+  const rows = parseCSV(txt);
+  if (rows.length < 2){ out.innerHTML = '<p class="empty">Could not parse enough rows (need a header row + data).</p>'; return; }
+  const headers = rows[0];
+  const data = rows.slice(1);
+  const cols = detectCols(headers);
+  const findings = [];
+
+  // exact duplicate rows
+  const seen = {};
+  data.forEach((r, i) => {
+    const key = r.join('\u0001');
+    if (seen[key] !== undefined) findings.push({ row: i+1, col: '—', kind: 'dup', msg: 'exact duplicate of row ' + seen[key] });
+    else seen[key] = i + 1;
+  });
+
+  // duplicate id
+  if (cols.id !== null){
+    const idseen = {};
+    data.forEach((r, i) => {
+      const v = (r[cols.id] || '').trim();
+      if (!v) return;
+      const k = v.toLowerCase();
+      if (idseen[k] !== undefined) findings.push({ row: i+1, col: headers[cols.id], kind: 'dup', msg: 'duplicate id "' + v + '" (first at row ' + idseen[k] + ')' });
+      else idseen[k] = i + 1;
+    });
+  }
+
+  // missing values per column
+  headers.forEach((h, ci) => {
+    let miss = 0;
+    data.forEach(r => { if ((r[ci] || '').trim() === '') miss++; });
+    if (miss > 0) findings.push({ row: null, col: h, kind: 'miss', msg: miss + ' of ' + data.length + ' rows empty in this column' });
+  });
+
+  // bad dates
+  if (cols.date !== null){
+    data.forEach((r, i) => {
+      const v = (r[cols.date] || '').trim();
+      if (v && isNaN(Date.parse(v))) findings.push({ row: i+1, col: headers[cols.date], kind: 'bad', msg: 'unrecognized date "' + v + '"' });
+    });
+  }
+
+  // non-numeric amounts
+  if (cols.amount !== null){
+    data.forEach((r, i) => {
+      const v = (r[cols.amount] || '').trim();
+      if (v !== '' && !isNum(v)) findings.push({ row: i+1, col: headers[cols.amount], kind: 'bad', msg: 'not a number: "' + v + '"' });
+    });
+  }
+
+  // zero/negative quantity
+  if (cols.qty !== null){
+    data.forEach((r, i) => {
+      const v = (r[cols.qty] || '').trim();
+      if (v !== '' && isNum(v) && Number(v) <= 0) findings.push({ row: i+1, col: headers[cols.qty], kind: 'bad', msg: 'quantity ' + v + ' is zero or negative' });
+    });
+  }
+
+  // amount outliers (IQR)
+  if (cols.amount !== null){
+    const vals = [];
+    data.forEach((r, i) => { const v = (r[cols.amount] || '').trim(); if (v !== '' && isNum(v)) vals.push({ i: i+1, v: Number(v) }); });
+    if (vals.length >= 4){
+      const s = vals.map(x => x.v).sort((a, b) => a - b);
+      const q1 = s[Math.floor(s.length * 0.25)], q3 = s[Math.floor(s.length * 0.75)];
+      const iqr = q3 - q1, lo = q1 - 1.5 * iqr, hi = q3 + 1.5 * iqr;
+      if (iqr > 0){
+        vals.forEach(x => { if (x.v < lo || x.v > hi) findings.push({ row: x.i, col: headers[cols.amount], kind: 'warn', msg: 'outlier ' + x.v + ' (outside ' + lo.toFixed(2) + '..' + hi.toFixed(2) + ')' }); });
+      }
+    }
+  }
+
+  // render
+  let html = '<div class="sum">' + data.length + ' data rows × ' + headers.length + ' columns — <b>' + findings.length +
+             '</b> issue' + (findings.length === 1 ? '' : 's') + ' found, each pointing to a specific row.</div>';
+  if (findings.length === 0){
+    html += '<div class="clean">✓ No issues found in this data.</div>';
+  } else {
+    findings.sort((a, b) => (a.row == null ? 999999 : a.row) - (b.row == null ? 999999 : b.row));
+    findings.forEach(f => {
+      const label = { dup: 'duplicate', bad: 'invalid', miss: 'missing', warn: 'outlier' }[f.kind];
+      const loc = f.row != null ? ('Row ' + f.row + ' · ' + f.col) : ('Column “' + f.col + '”');
+      html += '<div class="finding ' + f.kind + '"><span class="tag">' + label + '</span> ' + loc + ' — ' + f.msg + '</div>';
+    });
+  }
+  html += '<div class="note">Ran locally in your browser — your data never left this page. Deterministic: the same input always produces the same flags.</div>';
+  out.innerHTML = html;
+}
+</script>
 </body>
 </html>
