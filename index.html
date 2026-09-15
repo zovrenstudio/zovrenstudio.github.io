@@ -101,13 +101,15 @@
     <li>Reports delivered as clean PDF, within a day.</li>
   </ul>
 
-  <div class="demo">
-    <h2>Try it live — paste a CSV</h2>
-    <p class="hint">Paste a bank/ledger or order export below. The check runs in your browser: duplicates, missing values, bad dates, non-numeric amounts, and outliers — each flagged to a specific row. Nothing leaves this page. <strong>This is a quick sample — the full report adds reconciliation matching, charts, and a done-for-you PDF.</strong></p>
+  <div class="demo" id="demo">
+    <h2>Try it live — paste or drop a CSV</h2>
+    <p class="hint">Paste a bank/ledger or order export below — or drop a .csv file here. The check runs in your browser: duplicates, missing values, bad dates, non-numeric amounts, and outliers — each flagged to a specific row. Nothing leaves this page. <strong>This is a quick sample — the full report adds reconciliation matching, charts, and a done-for-you PDF.</strong></p>
     <textarea id="csv" placeholder="date,description,amount&#10;2024-01-01,Opening balance,1000.00&#10;2024-01-02,Sale - Widget,250.50&#10;..."></textarea>
     <div class="row">
       <button onclick="run()">Run checks</button>
       <button class="ghost" onclick="loadSample()">Load sample</button>
+      <button class="ghost" onclick="document.getElementById('file').click()">Choose a file</button>
+      <input type="file" id="file" accept=".csv,.txt,text/csv" style="display:none" onchange="onFile(event)">
     </div>
     <div id="out"></div>
   </div>
@@ -155,6 +157,27 @@ function loadSample(){
     '2024-01-12,Bulk order,9999.00\n';
   run();
 }
+function readFileIntoDemo(f){
+  var reader = new FileReader();
+  reader.onload = function(ev){
+    document.getElementById('csv').value = ev.target.result;
+    run();
+  };
+  reader.readAsText(f);
+}
+function onFile(e){
+  var f = e.target.files && e.target.files[0];
+  if (f) readFileIntoDemo(f);
+}
+(function(){
+  var el = document.getElementById('demo');
+  el.addEventListener('dragover', function(e){ e.preventDefault(); });
+  el.addEventListener('drop', function(e){
+    e.preventDefault();
+    var f = e.dataTransfer.files && e.dataTransfer.files[0];
+    if (f) readFileIntoDemo(f);
+  });
+})();
 </script>
 </body>
 </html>
