@@ -120,44 +120,29 @@
   <footer>Zovren Studio · zovrenstudio@gmail.com</footer>
 </div>
 
+<script src="checks.js"></script>
 <script>
-function parseCSV(text){
-  const rows = []; let cur = '', row = [], inQ = false;
-  for (let i = 0; i < text.length; i++){
-    const c = text[i];
-    if (inQ){
-      if (c === '"'){ if (text[i+1] === '"'){ cur += '"'; i++; } else inQ = false; }
-      else cur += c;
-    } else {
-      if (c === '"') inQ = true;
-      else if (c === ','){ row.push(cur); cur = ''; }
-      else if (c === '\n'){ row.push(cur); rows.push(row); row = []; cur = ''; }
-      else if (c !== '\r'){ cur += c; }
-    }
+function run(){
+  var txt = document.getElementById('csv').value;
+  var out = document.getElementById('out');
+  if (!txt.trim()){ out.innerHTML = '<p class="empty">Paste a CSV above (or click “Load sample”).</p>'; return; }
+  var r = window.ZovrenChecks.checkCSV(txt);
+  var html = '<div class="sum">' + r.rows.length + ' data rows × ' + r.headers.length + ' columns — <b>' +
+             r.findings.length + '</b> issue' + (r.findings.length === 1 ? '' : 's') +
+             ' found, each pointing to a specific row.</div>';
+  if (r.findings.length === 0){
+    html += '<div class="clean">✓ No issues found in this data.</div>';
+  } else {
+    r.findings.sort(function(a, b){ return (a.row == null ? 999999 : a.row) - (b.row == null ? 999999 : b.row); });
+    r.findings.forEach(function(f){
+      var label = { dup: 'duplicate', bad: 'invalid', miss: 'missing', warn: 'outlier' }[f.kind];
+      var loc = f.row != null ? ('Row ' + f.row + ' · ' + f.col) : ('Column “' + f.col + '”');
+      html += '<div class="finding ' + f.kind + '"><span class="tag">' + label + '</span> ' + loc + ' — ' + f.msg + '</div>';
+    });
   }
-  if (cur !== '' || row.length > 0){ row.push(cur); rows.push(row); }
-  while (rows.length && rows[rows.length-1].length === 1 && rows[rows.length-1][0].trim() === '') rows.pop();
-  return rows;
+  html += '<div class="note">Ran locally in your browser — your data never left this page. Deterministic: the same input always produces the same flags.</div>';
+  out.innerHTML = html;
 }
-
-function norm(s){ return (s || '').toLowerCase().replace(/[^a-z0-9]/g, ''); }
-function isNum(v){ return v !== '' && v != null && !isNaN(Number(v)); }
-
-function detectCols(headers){
-  const c = { id: null, date: null, amount: null, qty: null };
-  headers.forEach((h, i) => {
-    const n = norm(h);
-    if (c.id === null && (n === 'id' || n === 'orderid' || n === 'transactionid' || n === 'ref' ||
-        n === 'reference' || n === 'invoiceno' || n === 'invoicenumber' || n === 'orderno' ||
-        n.endsWith('id') || n.endsWith('number') || n.endsWith('no'))) c.id = i;
-    if (c.date === null && (n.includes('date') || n.includes('tarih'))) c.date = i;
-    if (c.amount === null && (n.includes('amount') || n.includes('debit') || n.includes('credit') ||
-        n.includes('total') || n.includes('value') || n.includes('balance'))) c.amount = i;
-    if (c.qty === null && (n.includes('qty') || n.includes('quantity') || n.includes('units') || n.includes('count'))) c.qty = i;
-  });
-  return c;
-}
-
 function loadSample(){
   document.getElementById('csv').value =
     'date,description,amount\n' +
@@ -169,99 +154,6 @@ function loadSample(){
     '2024-01-10,,200.00\n' +
     '2024-01-12,Bulk order,9999.00\n';
   run();
-}
-
-function run(){
-  const txt = document.getElementById('csv').value;
-  const out = document.getElementById('out');
-  if (!txt.trim()){ out.innerHTML = '<p class="empty">Paste a CSV above (or click “Load sample”).</p>'; return; }
-  const rows = parseCSV(txt);
-  if (rows.length < 2){ out.innerHTML = '<p class="empty">Could not parse enough rows (need a header row + data).</p>'; return; }
-  const headers = rows[0];
-  const data = rows.slice(1);
-  const cols = detectCols(headers);
-  const findings = [];
-
-  // exact duplicate rows
-  const seen = {};
-  data.forEach((r, i) => {
-    const key = r.join('\u0001');
-    if (seen[key] !== undefined) findings.push({ row: i+1, col: '—', kind: 'dup', msg: 'exact duplicate of row ' + seen[key] });
-    else seen[key] = i + 1;
-  });
-
-  // duplicate id
-  if (cols.id !== null){
-    const idseen = {};
-    data.forEach((r, i) => {
-      const v = (r[cols.id] || '').trim();
-      if (!v) return;
-      const k = v.toLowerCase();
-      if (idseen[k] !== undefined) findings.push({ row: i+1, col: headers[cols.id], kind: 'dup', msg: 'duplicate id "' + v + '" (first at row ' + idseen[k] + ')' });
-      else idseen[k] = i + 1;
-    });
-  }
-
-  // missing values per column
-  headers.forEach((h, ci) => {
-    let miss = 0;
-    data.forEach(r => { if ((r[ci] || '').trim() === '') miss++; });
-    if (miss > 0) findings.push({ row: null, col: h, kind: 'miss', msg: miss + ' of ' + data.length + ' rows empty in this column' });
-  });
-
-  // bad dates
-  if (cols.date !== null){
-    data.forEach((r, i) => {
-      const v = (r[cols.date] || '').trim();
-      if (v && isNaN(Date.parse(v))) findings.push({ row: i+1, col: headers[cols.date], kind: 'bad', msg: 'unrecognized date "' + v + '"' });
-    });
-  }
-
-  // non-numeric amounts
-  if (cols.amount !== null){
-    data.forEach((r, i) => {
-      const v = (r[cols.amount] || '').trim();
-      if (v !== '' && !isNum(v)) findings.push({ row: i+1, col: headers[cols.amount], kind: 'bad', msg: 'not a number: "' + v + '"' });
-    });
-  }
-
-  // zero/negative quantity
-  if (cols.qty !== null){
-    data.forEach((r, i) => {
-      const v = (r[cols.qty] || '').trim();
-      if (v !== '' && isNum(v) && Number(v) <= 0) findings.push({ row: i+1, col: headers[cols.qty], kind: 'bad', msg: 'quantity ' + v + ' is zero or negative' });
-    });
-  }
-
-  // amount outliers (IQR)
-  if (cols.amount !== null){
-    const vals = [];
-    data.forEach((r, i) => { const v = (r[cols.amount] || '').trim(); if (v !== '' && isNum(v)) vals.push({ i: i+1, v: Number(v) }); });
-    if (vals.length >= 4){
-      const s = vals.map(x => x.v).sort((a, b) => a - b);
-      const q1 = s[Math.floor(s.length * 0.25)], q3 = s[Math.floor(s.length * 0.75)];
-      const iqr = q3 - q1, lo = q1 - 1.5 * iqr, hi = q3 + 1.5 * iqr;
-      if (iqr > 0){
-        vals.forEach(x => { if (x.v < lo || x.v > hi) findings.push({ row: x.i, col: headers[cols.amount], kind: 'warn', msg: 'outlier ' + x.v + ' (outside ' + lo.toFixed(2) + '..' + hi.toFixed(2) + ')' }); });
-      }
-    }
-  }
-
-  // render
-  let html = '<div class="sum">' + data.length + ' data rows × ' + headers.length + ' columns — <b>' + findings.length +
-             '</b> issue' + (findings.length === 1 ? '' : 's') + ' found, each pointing to a specific row.</div>';
-  if (findings.length === 0){
-    html += '<div class="clean">✓ No issues found in this data.</div>';
-  } else {
-    findings.sort((a, b) => (a.row == null ? 999999 : a.row) - (b.row == null ? 999999 : b.row));
-    findings.forEach(f => {
-      const label = { dup: 'duplicate', bad: 'invalid', miss: 'missing', warn: 'outlier' }[f.kind];
-      const loc = f.row != null ? ('Row ' + f.row + ' · ' + f.col) : ('Column “' + f.col + '”');
-      html += '<div class="finding ' + f.kind + '"><span class="tag">' + label + '</span> ' + loc + ' — ' + f.msg + '</div>';
-    });
-  }
-  html += '<div class="note">Ran locally in your browser — your data never left this page. Deterministic: the same input always produces the same flags.</div>';
-  out.innerHTML = html;
 }
 </script>
 </body>
