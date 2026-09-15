@@ -61,6 +61,9 @@
   .finding.miss .tag { background: #e8e2d8; color: #6b6259; }
   .finding.warn .tag { background: #f0e0c8; color: #9a6a3b; }
   .note { margin-top: .8rem; color: var(--muted); font-size: .8rem; }
+  .funnel { margin-top: .8rem; padding: .8rem; background: var(--beige); border-radius: 8px;
+            font-size: .9rem; }
+  .funnel a { color: var(--bronze); font-weight: 700; }
 
   .cta { background: var(--charcoal); color: var(--cream); border-radius: 14px;
          padding: 1.8rem; text-align: center; margin-top: 2rem; }
@@ -143,6 +146,7 @@ function run(){
     });
   }
   html += '<div class="note">Ran locally in your browser — your data never left this page. Deterministic: the same input always produces the same flags.</div>';
+  html += '<div class="funnel">This is just the quick check. For the full report — reconciliation matching, charts, and a done-for-you PDF — send us your export (first one free): <a href="mailto:zovrenstudio@gmail.com">zovrenstudio@gmail.com</a></div>';
   out.innerHTML = html;
 }
 function loadSample(){
